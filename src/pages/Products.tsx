@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProductCard } from "@/components/ProductCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
 import { 
   Search, 
   Plus, 
@@ -12,92 +15,163 @@ import {
   Package
 } from "lucide-react";
 
-// Mock data expandido
-const mockProducts = [
-  {
-    id: "QM001ABC",
-    name: "Ácido Sulfúrico 98%",
-    supplier: "Química Industrial LTDA",
-    quantity: 25,
-    unit: "L",
-    expiryDate: "2024-10-15",
-    manufacturingDate: "2024-01-15",
-    batch: "ASH240115",
-    invoice: "NF-12345",
-    status: "pending" as const,
-    location: "laboratory" as const
-  },
-  {
-    id: "QM002DEF", 
-    name: "Hidróxido de Sódio",
-    supplier: "ChemBrasil S.A.",
-    quantity: 50,
-    unit: "kg",
-    expiryDate: "2025-06-20",
-    manufacturingDate: "2024-02-10",
-    batch: "NaOH240210",
-    invoice: "NF-67890",
-    status: "approved" as const,
-    location: "warehouse" as const
-  },
-  {
-    id: "QM003GHI",
-    name: "Etanol 99.5%",
-    supplier: "Destilaria Nacional",
-    quantity: 100,
-    unit: "L",
-    expiryDate: "2024-09-30",
-    manufacturingDate: "2024-01-20",
-    batch: "ETH240120",
-    invoice: "NF-11111",
-    status: "expired" as const,
-    location: "warehouse" as const
-  },
-  {
-    id: "QM004JKL",
-    name: "Acetona PA",
-    supplier: "Solventes & Cia",
-    quantity: 15,
-    unit: "L",
-    expiryDate: "2025-12-31",
-    manufacturingDate: "2024-03-01",
-    batch: "ACE240301",
-    invoice: "NF-22222",
-    status: "approved" as const,
-    location: "laboratory" as const
-  }
-];
+interface Product {
+  id: string;
+  name: string;
+  supplier: { name: string };
+  quantity: number;
+  unit: string;
+  expiry_date: string;
+  manufacturing_date: string;
+  batch: string;
+  invoice: string;
+  status: "pending" | "approved" | "expired" | "rejected";
+  location: { name: string; type: "laboratory" | "warehouse" };
+}
 
 export default function Products() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+  const { hasPermission } = useUserRole();
 
-  const filteredProducts = mockProducts.filter(product => {
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select(`
+          *,
+          supplier:suppliers(name),
+          location:locations(name, type)
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (error) {
+      console.error("Error fetching products:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os produtos",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          product.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.supplier.toLowerCase().includes(searchTerm.toLowerCase());
+                         product.supplier.name.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || product.status === statusFilter;
     
     return matchesSearch && matchesStatus;
   });
 
-  const handleApproveProduct = (id: string) => {
-    console.log('Aprovar produto:', id);
-    // Implementar com Supabase
+  const handleApproveProduct = async (id: string) => {
+    if (!hasPermission("analyst")) {
+      toast({
+        title: "Acesso negado",
+        description: "Você não tem permissão para aprovar produtos",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({ 
+          status: "approved",
+          approved_at: new Date().toISOString()
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Produto aprovado",
+        description: "O produto foi aprovado com sucesso",
+      });
+      
+      fetchProducts();
+    } catch (error) {
+      console.error("Error approving product:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível aprovar o produto",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleMoveProduct = (id: string) => {
-    console.log('Mover produto:', id);
-    // Implementar com Supabase
+  const handleMoveProduct = async (id: string) => {
+    if (!hasPermission("operator")) {
+      toast({
+        title: "Acesso negado",
+        description: "Você não tem permissão para mover produtos",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Get warehouse location
+      const { data: warehouseLocation } = await supabase
+        .from("locations")
+        .select("id")
+        .eq("type", "warehouse")
+        .single();
+
+      if (!warehouseLocation) {
+        throw new Error("Warehouse location not found");
+      }
+
+      const { error } = await supabase
+        .from("products")
+        .update({ location_id: warehouseLocation.id })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Produto movido",
+        description: "O produto foi movido para o almoxarifado",
+      });
+      
+      fetchProducts();
+    } catch (error) {
+      console.error("Error moving product:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível mover o produto",
+        variant: "destructive",
+      });
+    }
   };
 
   const statusCounts = {
-    all: mockProducts.length,
-    pending: mockProducts.filter(p => p.status === 'pending').length,
-    approved: mockProducts.filter(p => p.status === 'approved').length,
-    expired: mockProducts.filter(p => p.status === 'expired').length,
+    all: products.length,
+    pending: products.filter(p => p.status === 'pending').length,
+    approved: products.filter(p => p.status === 'approved').length,
+    expired: products.filter(p => p.status === 'expired').length,
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -169,7 +243,13 @@ export default function Products() {
           filteredProducts.map(product => (
             <ProductCard 
               key={product.id} 
-              product={product}
+              product={{
+                ...product,
+                supplier: product.supplier.name,
+                expiryDate: product.expiry_date,
+                manufacturingDate: product.manufacturing_date,
+                location: product.location.type as "laboratory" | "warehouse"
+              }}
               onApprove={handleApproveProduct}
               onMove={handleMoveProduct}
             />
@@ -196,7 +276,7 @@ export default function Products() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>
-                Mostrando {filteredProducts.length} de {mockProducts.length} produtos
+                Mostrando {filteredProducts.length} de {products.length} produtos
               </span>
               <span>
                 Última atualização: {new Date().toLocaleString('pt-BR')}

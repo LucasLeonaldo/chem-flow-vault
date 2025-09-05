@@ -3,13 +3,53 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { AppSidebar } from "@/components/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
+import Auth from "./pages/Auth";
+import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+// Protected Route Component
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+  
+  return (
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full bg-background">
+        <AppSidebar />
+        <div className="flex-1 flex flex-col">
+          <header className="h-16 border-b border-border bg-card flex items-center px-6">
+            <SidebarTrigger />
+            <div className="ml-4">
+              <h2 className="text-xl font-semibold text-foreground">ChemStock</h2>
+              <p className="text-sm text-muted-foreground">Sistema de Gestão de Estoque Químico</p>
+            </div>
+          </header>
+          <main className="flex-1 p-6 overflow-auto">
+            {children}
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -17,33 +57,36 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <SidebarProvider>
-          <div className="min-h-screen flex w-full bg-background">
-            <AppSidebar />
-            <div className="flex-1 flex flex-col">
-              <header className="h-16 border-b border-border bg-card flex items-center px-6">
-                <SidebarTrigger />
-                <div className="ml-4">
-                  <h2 className="text-xl font-semibold text-foreground">ChemStock</h2>
-                  <p className="text-sm text-muted-foreground">Sistema de Gestão de Estoque Químico</p>
-                </div>
-              </header>
-              <main className="flex-1 p-6 overflow-auto">
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/produtos" element={<Products />} />
-                  <Route path="/movimentacoes" element={<Dashboard />} />
-                  <Route path="/laboratorio" element={<Dashboard />} />
-                  <Route path="/almoxarifado" element={<Dashboard />} />
-                  <Route path="/alertas" element={<Dashboard />} />
-                  <Route path="/usuarios" element={<Dashboard />} />
-                  <Route path="/configuracoes" element={<Dashboard />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </main>
-            </div>
-          </div>
-        </SidebarProvider>
+        <AuthProvider>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route 
+              path="/dashboard" 
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/produtos" 
+              element={
+                <ProtectedRoute>
+                  <Products />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/" 
+              element={
+                <ProtectedRoute>
+                  <Index />
+                </ProtectedRoute>
+              } 
+            />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

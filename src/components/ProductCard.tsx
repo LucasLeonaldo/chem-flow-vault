@@ -13,7 +13,7 @@ interface Product {
   manufacturingDate: string;
   batch: string;
   invoice: string;
-  status: "pending" | "approved" | "expired";
+  status: "pending" | "approved" | "expired" | "rejected";
   location: "laboratory" | "warehouse";
 }
 
@@ -27,13 +27,15 @@ export function ProductCard({ product, onApprove, onMove }: ProductCardProps) {
   const statusStyles = {
     pending: "bg-warning text-warning-foreground",
     approved: "bg-success text-success-foreground", 
-    expired: "bg-destructive text-destructive-foreground"
+    expired: "bg-destructive text-destructive-foreground",
+    rejected: "bg-destructive text-destructive-foreground"
   };
 
   const statusLabels = {
     pending: "Pendente",
     approved: "Aprovado",
-    expired: "Vencido"
+    expired: "Vencido",
+    rejected: "Rejeitado"
   };
 
   const locationLabels = {
