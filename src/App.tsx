@@ -8,6 +8,10 @@ import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { AppSidebar } from "@/components/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
+import Alertas from "./pages/Alertas";
+import Laboratorio from "./pages/Laboratorio";
+import Almoxarifado from "./pages/Almoxarifado";
+import Movimentacoes from "./pages/Movimentacoes";
 import Auth from "./pages/Auth";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -77,10 +81,42 @@ const App = () => (
               } 
             />
             <Route 
+              path="/alertas" 
+              element={
+                <ProtectedRoute>
+                  <Alertas />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/laboratorio" 
+              element={
+                <ProtectedRoute>
+                  <Laboratorio />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/almoxarifado" 
+              element={
+                <ProtectedRoute>
+                  <Almoxarifado />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/movimentacoes" 
+              element={
+                <ProtectedRoute>
+                  <Movimentacoes />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
               path="/" 
               element={
                 <ProtectedRoute>
-                  <Index />
+                  <Dashboard />
                 </ProtectedRoute>
               } 
             />
