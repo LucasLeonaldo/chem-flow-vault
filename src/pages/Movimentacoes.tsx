@@ -2,195 +2,127 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AddMovementDialog } from "@/components/AddMovementDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { 
   ArrowRightLeft, 
-  Plus,
   Search,
   Filter,
+  Download,
   TrendingUp,
   TrendingDown,
-  Package
+  Package,
+  ArrowUp,
+  ArrowDown,
+  ArrowRight
 } from "lucide-react";
 
-export default function Movimentacoes() {
-  const { user } = useAuth();
+interface Movement {
+  id: string;
+  product_id: string;
+  movement_type: "entry" | "exit" | "transfer";
+  quantity: number;
+  from_location_id?: string;
+  to_location_id?: string;
+  notes?: string;
+  created_at: string;
+  created_by?: string;
+  product: {
+    name: string;
+    unit: string;
+  };
+  from_location?: {
+    name: string;
+  } | null;
+  to_location?: {
+    name: string;
+  } | null;
+  creator?: {
+    full_name: string;
+  } | null;
+}
+
+function Movimentacoes() {
   const { hasPermission } = useUserRole();
   const { toast } = useToast();
-  const [movements, setMovements] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState<string>("all");
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-
-  const [newMovement, setNewMovement] = useState({
-    product_id: "",
-    movement_type: "transfer" as "transfer" | "entry" | "exit",
-    from_location_id: "",
-    to_location_id: "",
-    quantity: 0,
-    notes: ""
-  });
+  const [typeFilter, setTypeFilter] = useState<string>("all");
 
   useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user]);
+    fetchMovements();
+  }, []);
 
-  const fetchData = async () => {
+  const fetchMovements = async () => {
     try {
-      const [movementsRes, productsRes, locationsRes] = await Promise.all([
-        supabase
-          .from('product_movements')
-          .select(`
-            *,
-            products(name, batch, unit),
-            from_location:locations!product_movements_from_location_id_fkey(name, type),
-            to_location:locations!product_movements_to_location_id_fkey(name, type)
-          `)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('products')
-          .select('id, name, batch, quantity, unit')
-          .eq('status', 'approved'),
-        supabase.from('locations').select('*')
-      ]);
+      const { data, error } = await supabase
+        .from("product_movements")
+        .select(`
+          *,
+          product:products(name, unit),
+          from_location:locations!product_movements_from_location_id_fkey(name),
+          to_location:locations!product_movements_to_location_id_fkey(name)
+        `)
+        .order("created_at", { ascending: false });
 
-      if (movementsRes.error) throw movementsRes.error;
-      if (productsRes.error) throw productsRes.error;
-      if (locationsRes.error) throw locationsRes.error;
-
-      setMovements(movementsRes.data || []);
-      setProducts(productsRes.data || []);
-      setLocations(locationsRes.data || []);
+      if (error) throw error;
+      setMovements((data || []) as any);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error("Error fetching movements:", error);
       toast({
         title: "Erro",
-        description: "Erro ao carregar dados",
-        variant: "destructive"
+        description: "Não foi possível carregar as movimentações",
+        variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateMovement = async () => {
-    if (!hasPermission('operator')) {
-      toast({
-        title: "Acesso negado",
-        description: "Apenas operadores e superiores podem criar movimentações",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('product_movements')
-        .insert({
-          ...newMovement,
-          created_by: user?.id
-        });
-
-      if (error) throw error;
-
-      // Update product location if it's a transfer
-      if (newMovement.movement_type === 'transfer') {
-        const { error: updateError } = await supabase
-          .from('products')
-          .update({ location_id: newMovement.to_location_id })
-          .eq('id', newMovement.product_id);
-
-        if (updateError) throw updateError;
-      }
-
-      toast({
-        title: "Sucesso",
-        description: "Movimentação registrada com sucesso"
-      });
-
-      setIsAddDialogOpen(false);
-      setNewMovement({
-        product_id: "",
-        movement_type: "transfer",
-        from_location_id: "",
-        to_location_id: "",
-        quantity: 0,
-        notes: ""
-      });
-      fetchData();
-    } catch (error) {
-      console.error('Error creating movement:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao registrar movimentação",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const getMovementIcon = (type: string) => {
-    switch (type) {
-      case 'entry':
-        return <TrendingUp className="h-4 w-4 text-green-500" />;
-      case 'exit':
-        return <TrendingDown className="h-4 w-4 text-red-500" />;
-      case 'transfer':
-        return <ArrowRightLeft className="h-4 w-4 text-blue-500" />;
-      default:
-        return <Package className="h-4 w-4" />;
-    }
-  };
-
-  const getMovementTypeLabel = (type: string) => {
-    switch (type) {
-      case 'entry':
-        return 'Entrada';
-      case 'exit':
-        return 'Saída';
-      case 'transfer':
-        return 'Transferência';
-      default:
-        return type;
-    }
-  };
-
   const filteredMovements = movements.filter(movement => {
-    const matchesSearch = 
-      movement.products?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      movement.products?.batch?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      movement.notes?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = movement.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         movement.product_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         movement.notes?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesType = filterType === "all" || movement.movement_type === filterType;
+    const matchesType = typeFilter === "all" || movement.movement_type === typeFilter;
     
     return matchesSearch && matchesType;
   });
 
+  const getMovementIcon = (type: string) => {
+    switch (type) {
+      case "entry": return <ArrowDown className="h-4 w-4 text-success" />;
+      case "exit": return <ArrowUp className="h-4 w-4 text-destructive" />;
+      case "transfer": return <ArrowRight className="h-4 w-4 text-info" />;
+      default: return <ArrowRightLeft className="h-4 w-4" />;
+    }
+  };
+
+  const getMovementBadge = (type: string) => {
+    switch (type) {
+      case "entry": return <Badge variant="outline" className="text-success border-success">Entrada</Badge>;
+      case "exit": return <Badge variant="outline" className="text-destructive border-destructive">Saída</Badge>;
+      case "transfer": return <Badge variant="outline" className="text-info border-info">Transferência</Badge>;
+      default: return <Badge variant="outline">{type}</Badge>;
+    }
+  };
+
   const stats = {
     total: movements.length,
-    entries: movements.filter(m => m.movement_type === 'entry').length,
-    exits: movements.filter(m => m.movement_type === 'exit').length,
-    transfers: movements.filter(m => m.movement_type === 'transfer').length
+    entries: movements.filter(m => m.movement_type === "entry").length,
+    exits: movements.filter(m => m.movement_type === "exit").length,
+    transfers: movements.filter(m => m.movement_type === "transfer").length,
   };
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Movimentações</h1>
-          <p className="text-muted-foreground mt-2">Carregando movimentações...</p>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -204,230 +136,137 @@ export default function Movimentacoes() {
             Histórico de entradas, saídas e transferências
           </p>
         </div>
-        {hasPermission('operator') && (
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Nova Movimentação
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Registrar Movimentação</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="product">Produto</Label>
-                  <Select 
-                    value={newMovement.product_id} 
-                    onValueChange={(value) => setNewMovement(prev => ({ ...prev, product_id: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecionar produto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map(product => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.name} - Lote: {product.batch}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="movement_type">Tipo de Movimentação</Label>
-                  <Select 
-                    value={newMovement.movement_type} 
-                    onValueChange={(value: "transfer" | "entry" | "exit") => setNewMovement(prev => ({ ...prev, movement_type: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="entry">Entrada</SelectItem>
-                      <SelectItem value="exit">Saída</SelectItem>
-                      <SelectItem value="transfer">Transferência</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {(newMovement.movement_type === 'exit' || newMovement.movement_type === 'transfer') && (
-                  <div>
-                    <Label htmlFor="from_location">De (Localização Origem)</Label>
-                    <Select 
-                      value={newMovement.from_location_id} 
-                      onValueChange={(value) => setNewMovement(prev => ({ ...prev, from_location_id: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecionar origem" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {locations.map(location => (
-                          <SelectItem key={location.id} value={location.id}>
-                            {location.name} ({location.type === 'laboratory' ? 'Laboratório' : 'Almoxarifado'})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {(newMovement.movement_type === 'entry' || newMovement.movement_type === 'transfer') && (
-                  <div>
-                    <Label htmlFor="to_location">Para (Localização Destino)</Label>
-                    <Select 
-                      value={newMovement.to_location_id} 
-                      onValueChange={(value) => setNewMovement(prev => ({ ...prev, to_location_id: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecionar destino" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {locations.map(location => (
-                          <SelectItem key={location.id} value={location.id}>
-                            {location.name} ({location.type === 'laboratory' ? 'Laboratório' : 'Almoxarifado'})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div>
-                  <Label htmlFor="quantity">Quantidade</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    value={newMovement.quantity}
-                    onChange={(e) => setNewMovement(prev => ({ ...prev, quantity: parseInt(e.target.value) || 0 }))}
-                    placeholder="Quantidade movimentada"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="notes">Observações (opcional)</Label>
-                  <Input
-                    id="notes"
-                    value={newMovement.notes}
-                    onChange={(e) => setNewMovement(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Adicione observações..."
-                  />
-                </div>
-
-                <Button onClick={handleCreateMovement} className="w-full">
-                  Registrar Movimentação
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+        
+        <div className="flex gap-2">
+          <Button variant="outline" className="gap-2">
+            <Download className="h-4 w-4" />
+            Exportar
+          </Button>
+          {hasPermission('operator') && (
+            <AddMovementDialog onMovementAdded={fetchMovements} />
+          )}
+        </div>
       </div>
 
       {/* Estatísticas */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
-          <CardHeader className="pb-3">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total</p>
                 <p className="text-2xl font-bold">{stats.total}</p>
               </div>
-              <ArrowRightLeft className="h-8 w-8 text-primary" />
+              <ArrowRightLeft className="h-8 w-8 text-muted-foreground" />
             </div>
-          </CardHeader>
+          </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="pb-3">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Entradas</p>
-                <p className="text-2xl font-bold text-green-600">{stats.entries}</p>
+                <p className="text-2xl font-bold text-success">{stats.entries}</p>
               </div>
-              <TrendingUp className="h-8 w-8 text-green-500" />
+              <TrendingUp className="h-8 w-8 text-success" />
             </div>
-          </CardHeader>
+          </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="pb-3">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Saídas</p>
-                <p className="text-2xl font-bold text-red-600">{stats.exits}</p>
+                <p className="text-2xl font-bold text-destructive">{stats.exits}</p>
               </div>
-              <TrendingDown className="h-8 w-8 text-red-500" />
+              <TrendingDown className="h-8 w-8 text-destructive" />
             </div>
-          </CardHeader>
+          </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="pb-3">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Transferências</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.transfers}</p>
+                <p className="text-2xl font-bold text-info">{stats.transfers}</p>
               </div>
-              <ArrowRightLeft className="h-8 w-8 text-blue-500" />
+              <ArrowRight className="h-8 w-8 text-info" />
             </div>
-          </CardHeader>
+          </CardContent>
         </Card>
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-4">
-        <div className="flex-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Buscar por produto, lote ou observações..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Buscar</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por produto ou observações..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tipo de Movimentação</label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os tipos</SelectItem>
+                  <SelectItem value="entry">Entrada</SelectItem>
+                  <SelectItem value="exit">Saída</SelectItem>
+                  <SelectItem value="transfer">Transferência</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
-        <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os Tipos</SelectItem>
-            <SelectItem value="entry">Entradas</SelectItem>
-            <SelectItem value="exit">Saídas</SelectItem>
-            <SelectItem value="transfer">Transferências</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Lista de Movimentações */}
       <div className="space-y-4">
-        {filteredMovements.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-8">
-                <ArrowRightLeft className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-foreground mb-2">
-                  Nenhuma movimentação encontrada
-                </h3>
-                <p className="text-muted-foreground">
-                  {hasPermission('operator') ? 'Registre a primeira movimentação' : 'Aguarde movimentações serem registradas'}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredMovements.map(movement => (
+        {filteredMovements.length > 0 ? (
+          filteredMovements.map((movement) => (
             <Card key={movement.id}>
-              <CardContent className="pt-6">
+              <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    {getMovementIcon(movement.movement_type)}
+                    <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                      {getMovementIcon(movement.movement_type)}
+                    </div>
                     <div>
-                      <h4 className="font-medium">
-                        {getMovementTypeLabel(movement.movement_type)}: {movement.products?.name}
-                      </h4>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-medium">{movement.product.name}</h3>
+                        {getMovementBadge(movement.movement_type)}
+                      </div>
                       <p className="text-sm text-muted-foreground">
-                        Lote: {movement.products?.batch} • Quantidade: {movement.quantity} {movement.products?.unit}
+                        {movement.quantity} {movement.product.unit}
+                        {movement.movement_type === "transfer" && movement.from_location && movement.to_location && (
+                          <span> • {movement.from_location.name} → {movement.to_location.name}</span>
+                        )}
+                        {movement.movement_type === "entry" && movement.to_location && (
+                          <span> • Para: {movement.to_location.name}</span>
+                        )}
+                        {movement.movement_type === "exit" && movement.from_location && (
+                          <span> • De: {movement.from_location.name}</span>
+                        )}
                       </p>
                       {movement.notes && (
                         <p className="text-sm text-muted-foreground mt-1">
@@ -436,25 +275,14 @@ export default function Movimentacoes() {
                       )}
                     </div>
                   </div>
+
                   <div className="text-right">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant={
-                        movement.movement_type === 'entry' ? 'default' :
-                        movement.movement_type === 'exit' ? 'destructive' : 'secondary'
-                      }>
-                        {getMovementTypeLabel(movement.movement_type)}
-                      </Badge>
-                    </div>
                     <p className="text-sm text-muted-foreground">
-                      {new Date(movement.created_at).toLocaleDateString('pt-BR')} às{' '}
-                      {new Date(movement.created_at).toLocaleTimeString('pt-BR', { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                      })}
+                      {new Date(movement.created_at).toLocaleString('pt-BR')}
                     </p>
-                    {(movement.from_location?.name || movement.to_location?.name) && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {movement.from_location?.name || 'Externa'} → {movement.to_location?.name || 'Externa'}
+                    {movement.creator && (
+                      <p className="text-xs text-muted-foreground">
+                        por {movement.creator.full_name}
                       </p>
                     )}
                   </div>
@@ -462,8 +290,23 @@ export default function Movimentacoes() {
               </CardContent>
             </Card>
           ))
+        ) : (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Package className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium text-muted-foreground mb-2">
+                Nenhuma movimentação encontrada
+              </h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                Não foram encontradas movimentações que correspondam aos filtros selecionados.
+                Tente ajustar os critérios de busca.
+              </p>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
   );
 }
+
+export default Movimentacoes;
