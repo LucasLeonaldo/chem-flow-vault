@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProductCard } from "@/components/ProductCard";
+import { AddProductDialog } from "@/components/AddProductDialog";
+import { ProductsPagination } from "@/components/ProductsPagination";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { 
   Search, 
-  Plus, 
   Filter,
   Download,
   Package
@@ -34,6 +35,8 @@ export default function Products() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(12);
   const { toast } = useToast();
   const { hasPermission } = useUserRole();
 
@@ -75,6 +78,20 @@ export default function Products() {
     
     return matchesSearch && matchesStatus;
   });
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
 
   const handleApproveProduct = async (id: string) => {
     if (!hasPermission("analyst")) {
@@ -187,10 +204,9 @@ export default function Products() {
             <Download className="h-4 w-4" />
             Exportar
           </Button>
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            Novo Produto
-          </Button>
+          {hasPermission("analyst") && (
+            <AddProductDialog onProductAdded={fetchProducts} />
+          )}
         </div>
       </div>
 
@@ -270,14 +286,23 @@ export default function Products() {
         )}
       </div>
 
+      {/* Pagination */}
+      {filteredProducts.length > 0 && (
+        <ProductsPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          totalItems={filteredProducts.length}
+          onPageChange={handlePageChange}
+          onItemsPerPageChange={handleItemsPerPageChange}
+        />
+      )}
+
       {/* Resumo */}
       {filteredProducts.length > 0 && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>
-                Mostrando {filteredProducts.length} de {products.length} produtos
-              </span>
               <span>
                 Última atualização: {new Date().toLocaleString('pt-BR')}
               </span>

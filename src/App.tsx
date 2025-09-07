@@ -14,6 +14,7 @@ import Almoxarifado from "./pages/Almoxarifado";
 import Movimentacoes from "./pages/Movimentacoes";
 import Auth from "./pages/Auth";
 import Index from "./pages/Index";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -109,6 +110,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Movimentacoes />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/perfil" 
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/configuracoes" 
+              element={
+                <ProtectedRoute>
+                  <Profile />
                 </ProtectedRoute>
               } 
             />
