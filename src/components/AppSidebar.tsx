@@ -8,9 +8,12 @@ import {
   AlertTriangle,
   Users,
   Settings,
-  ChevronRight
+  ChevronRight,
+  LogOut
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 
 import {
   Sidebar,
@@ -42,6 +45,7 @@ const adminItems = [
 
 export function AppSidebar() {
   const { open } = useSidebar();
+  const { signOut } = useAuth();
   const location = useLocation();
   const currentPath = location.pathname;
 
@@ -103,6 +107,17 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <div className="mt-auto p-4 border-t border-sidebar-border">
+          <Button
+            variant="ghost"
+            onClick={() => signOut()}
+            className="w-full justify-start text-sidebar-foreground hover:bg-accent"
+          >
+            <LogOut className="h-4 w-4" />
+            {open && <span className="ml-2">Sair</span>}
+          </Button>
+        </div>
       </SidebarContent>
     </Sidebar>
   );
