@@ -9,7 +9,8 @@ import {
   Users,
   Settings,
   ChevronRight,
-  LogOut
+  LogOut,
+  FileText
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,6 +32,7 @@ import {
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Produtos", url: "/produtos", icon: Package },
+  { title: "Notas Fiscais", url: "/notas-fiscais", icon: FileText },
   { title: "Movimentações", url: "/movimentacoes", icon: ArrowRightLeft },
   { title: "Laboratório", url: "/laboratorio", icon: FlaskConical },
   { title: "Almoxarifado", url: "/almoxarifado", icon: Warehouse },

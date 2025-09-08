@@ -16,6 +16,7 @@ import Auth from "./pages/Auth";
 import Index from "./pages/Index";
 import Profile from "./pages/Profile";
 import UserManagement from "./pages/UserManagement";
+import NotasFiscais from "./pages/NotasFiscais";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -79,6 +80,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Products />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/notas-fiscais" 
+              element={
+                <ProtectedRoute>
+                  <NotasFiscais />
                 </ProtectedRoute>
               } 
             />

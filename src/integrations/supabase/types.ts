@@ -14,6 +14,109 @@ export type Database = {
   }
   public: {
     Tables: {
+      invoice_items: {
+        Row: {
+          batch: string | null
+          created_at: string | null
+          expiry_date: string | null
+          id: string
+          invoice_id: string
+          manufacturing_date: string | null
+          product_code: string | null
+          product_name: string
+          quantity: number
+          total_price: number | null
+          unit: string
+          unit_price: number | null
+        }
+        Insert: {
+          batch?: string | null
+          created_at?: string | null
+          expiry_date?: string | null
+          id?: string
+          invoice_id: string
+          manufacturing_date?: string | null
+          product_code?: string | null
+          product_name: string
+          quantity: number
+          total_price?: number | null
+          unit: string
+          unit_price?: number | null
+        }
+        Update: {
+          batch?: string | null
+          created_at?: string | null
+          expiry_date?: string | null
+          id?: string
+          invoice_id?: string
+          manufacturing_date?: string | null
+          product_code?: string | null
+          product_name?: string
+          quantity?: number
+          total_price?: number | null
+          unit?: string
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          invoice_number: string
+          issue_date: string
+          notes: string | null
+          receipt_date: string | null
+          status: string | null
+          supplier_id: string | null
+          total_value: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          invoice_number: string
+          issue_date: string
+          notes?: string | null
+          receipt_date?: string | null
+          status?: string | null
+          supplier_id?: string | null
+          total_value?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          invoice_number?: string
+          issue_date?: string
+          notes?: string | null
+          receipt_date?: string | null
+          status?: string | null
+          supplier_id?: string | null
+          total_value?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           created_at: string | null

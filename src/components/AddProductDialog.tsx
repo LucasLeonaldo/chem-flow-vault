@@ -36,6 +36,9 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
   const [open, setOpen] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -55,6 +58,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
     if (open) {
       fetchSuppliers();
       fetchLocations();
+      fetchInvoices();
     }
   }, [open]);
 
@@ -87,7 +91,75 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
     }
   };
 
+  const fetchInvoices = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(`
+          id,
+          invoice_number,
+          suppliers (name)
+        `)
+        .eq("status", "received")
+        .order("invoice_number");
+
+      if (error) throw error;
+      setInvoices(data || []);
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+    }
+  };
+
+  const fetchInvoiceItems = async (invoiceId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("invoice_items")
+        .select("*")
+        .eq("invoice_id", invoiceId);
+
+      if (error) throw error;
+      setInvoiceItems(data || []);
+    } catch (error) {
+      console.error("Error fetching invoice items:", error);
+    }
+  };
+
+  const handleInvoiceSelect = (invoiceId: string) => {
+    setSelectedInvoice(invoiceId);
+    if (invoiceId) {
+      fetchInvoiceItems(invoiceId);
+      const invoice = invoices.find(inv => inv.id === invoiceId);
+      if (invoice) {
+        setFormData(prev => ({ ...prev, invoice: invoice.invoice_number }));
+      }
+    } else {
+      setInvoiceItems([]);
+    }
+  };
+
+  const handleProductSelect = (productName: string) => {
+    const item = invoiceItems.find(item => item.product_name === productName);
+    if (item) {
+      const timestamp = Date.now().toString(36);
+      const randomStr = Math.random().toString(36).substring(2, 5);
+      const autoId = `PROD-${timestamp}-${randomStr}`.toUpperCase();
+
+      setFormData(prev => ({
+        ...prev,
+        id: autoId,
+        name: item.product_name,
+        quantity: item.quantity.toString(),
+        unit: item.unit,
+        batch: item.batch || "",
+        manufacturing_date: item.manufacturing_date ? new Date(item.manufacturing_date) : undefined,
+        expiry_date: item.expiry_date ? new Date(item.expiry_date) : undefined,
+      }));
+    }
+  };
+
   const resetForm = () => {
+    setSelectedInvoice("");
+    setInvoiceItems([]);
     setFormData({
       id: "",
       name: "",
@@ -109,10 +181,17 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
     setIsLoading(true);
 
     try {
+      // Auto-generate ID if not provided
+      const productId = formData.id || (() => {
+        const timestamp = Date.now().toString(36);
+        const randomStr = Math.random().toString(36).substring(2, 5);
+        return `PROD-${timestamp}-${randomStr}`.toUpperCase();
+      })();
+
       const { error } = await supabase
         .from("products")
         .insert({
-          id: formData.id,
+          id: productId,
           name: formData.name,
           supplier_id: formData.supplier_id,
           quantity: parseFloat(formData.quantity),
@@ -165,15 +244,57 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Auto-fill from Invoice */}
+          <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
+            <h4 className="font-medium text-sm">Preencher automaticamente com dados da Nota Fiscal</h4>
+            
+            <div className="space-y-2">
+              <Label htmlFor="invoice_select">Selecionar Nota Fiscal (Opcional)</Label>
+              <Select
+                value={selectedInvoice}
+                onValueChange={handleInvoiceSelect}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma nota fiscal" />
+                </SelectTrigger>
+                <SelectContent>
+                  {invoices.map((invoice) => (
+                    <SelectItem key={invoice.id} value={invoice.id}>
+                      {invoice.invoice_number} - {invoice.suppliers.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedInvoice && invoiceItems.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="product_select">Selecionar Produto da NF</Label>
+                <Select onValueChange={handleProductSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um produto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {invoiceItems.map((item) => (
+                      <SelectItem key={item.id} value={item.product_name}>
+                        {item.product_name} - {item.quantity} {item.unit}
+                        {item.batch && ` (Lote: ${item.batch})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="id">Código do Produto *</Label>
+              <Label htmlFor="id">Código do Produto</Label>
               <Input
                 id="id"
                 value={formData.id}
                 onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                placeholder="Ex: QU001"
-                required
+                placeholder="Será gerado automaticamente se vazio"
               />
             </div>
 
