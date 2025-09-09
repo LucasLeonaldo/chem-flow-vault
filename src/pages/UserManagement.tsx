@@ -8,11 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Users, UserPlus, Shield, Settings, Search, MoreHorizontal, UserCheck, UserX } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserRole } from "@/hooks/useUserRole";
+import { usePermissions, type PermissionAction } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
+import { PermissionsManager } from "@/components/PermissionsManager";
 
 interface UserProfile {
   id: string;
@@ -20,16 +22,18 @@ interface UserProfile {
   email: string;
   created_at: string;
   roles: string[];
+  permissions: string[];
 }
 
 function UserManagement() {
   const { user } = useAuth();
-  const { hasPermission } = useUserRole();
+  const { hasPermission } = usePermissions();
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRole, setSelectedRole] = useState<string>("all");
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   // New user invitation state
   const [inviteDialog, setInviteDialog] = useState(false);
@@ -38,7 +42,7 @@ function UserManagement() {
   const [inviteLoading, setInviteLoading] = useState(false);
 
   useEffect(() => {
-    if (hasPermission("admin")) {
+    if (hasPermission("manage_users")) {
       fetchUsers();
     }
   }, [hasPermission]);
@@ -58,9 +62,16 @@ function UserManagement() {
 
       if (rolesError) throw rolesError;
 
+      const { data: userPermissions, error: permissionsError } = await supabase
+        .from("user_permissions")
+        .select("user_id, permission");
+
+      if (permissionsError) throw permissionsError;
+
       const usersWithRoles = profiles?.map(profile => ({
         ...profile,
-        roles: userRoles?.filter(ur => ur.user_id === profile.id).map(ur => ur.role) || []
+        roles: userRoles?.filter(ur => ur.user_id === profile.id).map(ur => ur.role) || [],
+        permissions: userPermissions?.filter(up => up.user_id === profile.id).map(up => up.permission) || []
       })) || [];
 
       setUsers(usersWithRoles);
@@ -169,7 +180,7 @@ function UserManagement() {
     }
   };
 
-  if (!hasPermission("admin")) {
+  if (!hasPermission("manage_users")) {
     return (
       <div className="space-y-6">
         <Alert>
@@ -315,18 +326,30 @@ function UserManagement() {
                           </Badge>
                         ))
                       ) : (
-                        <Badge variant="outline">Sem permissões</Badge>
+                        <Badge variant="outline">Sem roles</Badge>
                       )}
+                    </div>
+                    <div className="flex gap-1 mt-1">
+                      <Badge variant="secondary">
+                        {user.permissions.length} permissões
+                      </Badge>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedUserId(selectedUserId === user.id ? null : user.id)}
+                  >
+                    {selectedUserId === user.id ? "Fechar" : "Gerenciar Permissões"}
+                  </Button>
+
                   <Select
                     onValueChange={(role) => handleChangeUserRole(user.id, role, "add")}
                   >
                     <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Adicionar permissão" />
+                      <SelectValue placeholder="Adicionar role" />
                     </SelectTrigger>
                     <SelectContent>
                       {!user.roles.includes("viewer") && (
@@ -349,7 +372,7 @@ function UserManagement() {
                       onValueChange={(role) => handleChangeUserRole(user.id, role, "remove")}
                     >
                       <SelectTrigger className="w-40">
-                        <SelectValue placeholder="Remover permissão" />
+                        <SelectValue placeholder="Remover role" />
                       </SelectTrigger>
                       <SelectContent>
                         {user.roles.map((role) => (
@@ -363,6 +386,16 @@ function UserManagement() {
                 </div>
               </div>
             </CardContent>
+            
+            {selectedUserId === user.id && (
+              <CardContent className="pt-0">
+                <PermissionsManager
+                  userId={user.id}
+                  userName={user.full_name || user.email}
+                  onPermissionsChange={fetchUsers}
+                />
+              </CardContent>
+            )}
           </Card>
         ))}
       </div>

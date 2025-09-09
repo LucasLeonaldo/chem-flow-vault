@@ -325,6 +325,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_permissions: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          id: string
+          permission: Database["public"]["Enums"]["permission_action"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          permission: Database["public"]["Enums"]["permission_action"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          permission?: Database["public"]["Enums"]["permission_action"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -351,6 +378,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      has_permission: {
+        Args: {
+          _permission: Database["public"]["Enums"]["permission_action"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -363,6 +397,30 @@ export type Database = {
       app_role: "admin" | "analyst" | "operator" | "viewer"
       location_type: "laboratory" | "warehouse"
       movement_type: "entry" | "exit" | "transfer"
+      permission_action:
+        | "view_products"
+        | "create_products"
+        | "edit_products"
+        | "delete_products"
+        | "view_invoices"
+        | "create_invoices"
+        | "edit_invoices"
+        | "delete_invoices"
+        | "view_movements"
+        | "create_movements"
+        | "edit_movements"
+        | "delete_movements"
+        | "view_suppliers"
+        | "create_suppliers"
+        | "edit_suppliers"
+        | "delete_suppliers"
+        | "view_locations"
+        | "create_locations"
+        | "edit_locations"
+        | "delete_locations"
+        | "manage_users"
+        | "view_reports"
+        | "approve_products"
       product_status: "pending" | "approved" | "expired" | "rejected"
     }
     CompositeTypes: {
@@ -494,6 +552,31 @@ export const Constants = {
       app_role: ["admin", "analyst", "operator", "viewer"],
       location_type: ["laboratory", "warehouse"],
       movement_type: ["entry", "exit", "transfer"],
+      permission_action: [
+        "view_products",
+        "create_products",
+        "edit_products",
+        "delete_products",
+        "view_invoices",
+        "create_invoices",
+        "edit_invoices",
+        "delete_invoices",
+        "view_movements",
+        "create_movements",
+        "edit_movements",
+        "delete_movements",
+        "view_suppliers",
+        "create_suppliers",
+        "edit_suppliers",
+        "delete_suppliers",
+        "view_locations",
+        "create_locations",
+        "edit_locations",
+        "delete_locations",
+        "manage_users",
+        "view_reports",
+        "approve_products",
+      ],
       product_status: ["pending", "approved", "expired", "rejected"],
     },
   },
