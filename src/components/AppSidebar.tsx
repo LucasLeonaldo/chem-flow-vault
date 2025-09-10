@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -30,24 +31,25 @@ import {
 } from "@/components/ui/sidebar";
 
 const mainItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Produtos", url: "/produtos", icon: Package },
-  { title: "Notas Fiscais", url: "/notas-fiscais", icon: FileText },
-  { title: "Movimentações", url: "/movimentacoes", icon: ArrowRightLeft },
-  { title: "Laboratório", url: "/laboratorio", icon: FlaskConical },
-  { title: "Almoxarifado", url: "/almoxarifado", icon: Warehouse },
-  { title: "Alertas", url: "/alertas", icon: AlertTriangle },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, permission: null },
+  { title: "Produtos", url: "/produtos", icon: Package, permission: "view_products" },
+  { title: "Notas Fiscais", url: "/notas-fiscais", icon: FileText, permission: "view_invoices" },
+  { title: "Movimentações", url: "/movimentacoes", icon: ArrowRightLeft, permission: null },
+  { title: "Laboratório", url: "/laboratorio", icon: FlaskConical, permission: "view_locations" },
+  { title: "Almoxarifado", url: "/almoxarifado", icon: Warehouse, permission: "view_locations" },
+  { title: "Alertas", url: "/alertas", icon: AlertTriangle, permission: "view_reports" },
 ];
 
 const adminItems = [
-  { title: "Usuários", url: "/usuarios", icon: Users },
-  { title: "Perfil", url: "/perfil", icon: Users },
-  { title: "Configurações", url: "/configuracoes", icon: Settings },
+  { title: "Usuários", url: "/usuarios", icon: Users, permission: "manage_users" },
+  { title: "Perfil", url: "/perfil", icon: Users, permission: null },
+  { title: "Configurações", url: "/configuracoes", icon: Settings, permission: null },
 ];
 
 export function AppSidebar() {
   const { open } = useSidebar();
   const { signOut } = useAuth();
+  const { hasPermission } = usePermissions();
   const location = useLocation();
   const currentPath = location.pathname;
 
@@ -76,7 +78,9 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainItems.map((item) => (
+              {mainItems
+                .filter((item) => !item.permission || hasPermission(item.permission as any))
+                .map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} end className={getNavCls}>
@@ -96,7 +100,9 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {adminItems.map((item) => (
+              {adminItems
+                .filter((item) => !item.permission || hasPermission(item.permission as any))
+                .map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} className={getNavCls}>

@@ -21,21 +21,19 @@ const invoiceSchema = z.object({
   invoice_number: z.string().min(1, "Número da NF é obrigatório"),
   supplier_id: z.string().min(1, "Fornecedor é obrigatório"),
   issue_date: z.date({ required_error: "Data de emissão é obrigatória" }),
-  receipt_date: z.date().optional(),
-  total_value: z.number().min(0, "Valor deve ser positivo"),
-  status: z.enum(["received", "processed", "cancelled"]),
+  total_value: z.number().min(0, "Valor deve ser positivo").optional(),
   notes: z.string().optional(),
 });
 
 const itemSchema = z.object({
   product_name: z.string().min(1, "Nome do produto é obrigatório"),
-  product_code: z.string().optional(),
+  product_code: z.string().regex(/^\d{5,7}$/, "Código deve ter entre 5 e 7 números"),
   quantity: z.number().min(0.01, "Quantidade deve ser maior que 0"),
   unit_price: z.number().min(0, "Preço unitário deve ser positivo"),
-  batch: z.string().optional(),
-  manufacturing_date: z.date().optional(),
-  expiry_date: z.date().optional(),
-  unit: z.string().min(1, "Unidade é obrigatória"),
+  batch: z.string().min(1, "Lote é obrigatório"),
+  manufacturing_date: z.date({ required_error: "Data de fabricação é obrigatória" }),
+  expiry_date: z.date({ required_error: "Data de validade é obrigatória" }),
+  unit: z.enum(["KG", "Lts", "G"], { required_error: "Selecione uma unidade válida" }),
 });
 
 type InvoiceForm = z.infer<typeof invoiceSchema>;
@@ -54,7 +52,7 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
   const { register, handleSubmit, formState: { errors }, setValue, watch, reset } = useForm<InvoiceForm>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: {
-      status: "received",
+      invoice_number: `NF-${Date.now()}`,
     },
   });
 
@@ -72,13 +70,18 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
 
   const createInvoiceMutation = useMutation({
     mutationFn: async (data: InvoiceForm) => {
+      // Calcular valor total baseado nos itens
+      const calculatedTotal = items.reduce((sum, item) => 
+        sum + (item.quantity * (item.unit_price || 0)), 0
+      );
+
       const invoiceData = {
         invoice_number: data.invoice_number,
         supplier_id: data.supplier_id,
         issue_date: data.issue_date.toISOString().split('T')[0],
-        receipt_date: data.receipt_date?.toISOString().split('T')[0] || null,
-        total_value: data.total_value,
-        status: data.status,
+        receipt_date: data.issue_date.toISOString().split('T')[0], // Usar data de emissão como recebimento
+        total_value: calculatedTotal,
+        status: "received",
         notes: data.notes || null,
         created_by: (await supabase.auth.getUser()).data.user?.id,
       };
@@ -92,16 +95,23 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
       if (invoiceError) throw invoiceError;
 
       if (items.length > 0) {
+        // Buscar localização "DEP. Analise"
+        const { data: location } = await supabase
+          .from("locations")
+          .select("id")
+          .eq("name", "DEP. Analise")
+          .single();
+
         const itemsToInsert = items.map(item => ({
           invoice_id: invoice.id,
           product_name: item.product_name,
-          product_code: item.product_code || null,
+          product_code: item.product_code,
           quantity: item.quantity,
           unit_price: item.unit_price || 0,
           total_price: item.quantity * (item.unit_price || 0),
-          batch: item.batch || null,
-          manufacturing_date: item.manufacturing_date?.toISOString().split('T')[0] || null,
-          expiry_date: item.expiry_date?.toISOString().split('T')[0] || null,
+          batch: item.batch,
+          manufacturing_date: item.manufacturing_date?.toISOString().split('T')[0],
+          expiry_date: item.expiry_date?.toISOString().split('T')[0],
           unit: item.unit,
         }));
 
@@ -110,6 +120,29 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
           .insert(itemsToInsert);
 
         if (itemsError) throw itemsError;
+
+        // Criar produtos automaticamente e enviar para "DEP. Analise"
+        const user = await supabase.auth.getUser();
+        const productsToInsert = items.map(item => ({
+          id: item.product_code,
+          name: item.product_name,
+          batch: item.batch,
+          quantity: item.quantity,
+          unit: item.unit,
+          manufacturing_date: item.manufacturing_date?.toISOString().split('T')[0],
+          expiry_date: item.expiry_date?.toISOString().split('T')[0],
+          invoice: data.invoice_number,
+          supplier_id: data.supplier_id,
+          location_id: location?.id,
+          status: "pending" as const,
+          created_by: user.data.user?.id,
+        }));
+
+        const { error: productsError } = await supabase
+          .from("products")
+          .insert(productsToInsert);
+
+        if (productsError) throw productsError;
       }
 
       return invoice;
@@ -142,7 +175,15 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
   };
 
   const onSubmit = (data: InvoiceForm) => {
+    if (items.length === 0) {
+      toast.error("Adicione pelo menos um item à nota fiscal");
+      return;
+    }
     createInvoiceMutation.mutate(data);
+  };
+
+  const calculateTotal = () => {
+    return items.reduce((sum, item) => sum + (item.quantity * (item.unit_price || 0)), 0);
   };
 
   return (
@@ -161,6 +202,8 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
                 id="invoice_number"
                 {...register("invoice_number")}
                 placeholder="NF-2024-001"
+                readOnly
+                className="bg-muted"
               />
               {errors.invoice_number && (
                 <p className="text-sm text-destructive">{errors.invoice_number.message}</p>
@@ -215,58 +258,17 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label>Data de Recebimento</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !watch("receipt_date") && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {watch("receipt_date") ? format(watch("receipt_date"), "dd/MM/yyyy") : "Selecione a data"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={watch("receipt_date")}
-                    onSelect={(date) => setValue("receipt_date", date)}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
 
             <div className="space-y-2">
-              <Label htmlFor="total_value">Valor Total *</Label>
+              <Label htmlFor="total_value">Valor Total</Label>
               <Input
                 id="total_value"
-                type="number"
-                step="0.01"
-                {...register("total_value", { valueAsNumber: true })}
-                placeholder="0.00"
+                type="text"
+                value={`R$ ${calculateTotal().toFixed(2)}`}
+                readOnly
+                className="bg-muted"
               />
-              {errors.total_value && (
-                <p className="text-sm text-destructive">{errors.total_value.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select onValueChange={(value) => setValue("status", value as any)} defaultValue="received">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="received">Recebida</SelectItem>
-                  <SelectItem value="processed">Processada</SelectItem>
-                  <SelectItem value="cancelled">Cancelada</SelectItem>
-                </SelectContent>
-              </Select>
+              <p className="text-xs text-muted-foreground">Calculado automaticamente baseado nos itens</p>
             </div>
           </div>
 
@@ -294,15 +296,20 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
                   onChange={(e) => setCurrentItem({ ...currentItem, product_name: e.target.value })}
                 />
                 <Input
-                  placeholder="Código do produto"
+                  placeholder="Código do produto (5-7 números) *"
                   value={currentItem.product_code || ""}
                   onChange={(e) => setCurrentItem({ ...currentItem, product_code: e.target.value })}
                 />
-                <Input
-                  placeholder="Unidade *"
-                  value={currentItem.unit || ""}
-                  onChange={(e) => setCurrentItem({ ...currentItem, unit: e.target.value })}
-                />
+                <Select onValueChange={(value: "KG" | "Lts" | "G") => setCurrentItem({ ...currentItem, unit: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Unidade *" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="KG">KG</SelectItem>
+                    <SelectItem value="Lts">Lts</SelectItem>
+                    <SelectItem value="G">G</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Input
                   type="number"
                   step="0.01"
@@ -313,15 +320,63 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
                 <Input
                   type="number"
                   step="0.01"
-                  placeholder="Preço unitário"
+                  placeholder="Preço unitário *"
                   value={currentItem.unit_price || ""}
                   onChange={(e) => setCurrentItem({ ...currentItem, unit_price: parseFloat(e.target.value) })}
                 />
                 <Input
-                  placeholder="Lote"
+                  placeholder="Lote *"
                   value={currentItem.batch || ""}
                   onChange={(e) => setCurrentItem({ ...currentItem, batch: e.target.value })}
                 />
+                
+                {/* Data de Fabricação */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "justify-start text-left font-normal",
+                        !currentItem.manufacturing_date && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {currentItem.manufacturing_date ? format(currentItem.manufacturing_date, "dd/MM/yyyy") : "Data Fabricação *"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={currentItem.manufacturing_date}
+                      onSelect={(date) => setCurrentItem({ ...currentItem, manufacturing_date: date })}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {/* Data de Validade */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "justify-start text-left font-normal",
+                        !currentItem.expiry_date && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {currentItem.expiry_date ? format(currentItem.expiry_date, "dd/MM/yyyy") : "Data Validade *"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={currentItem.expiry_date}
+                      onSelect={(date) => setCurrentItem({ ...currentItem, expiry_date: date })}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               <Button type="button" onClick={addItem} className="gap-2">
                 <Plus className="h-4 w-4" />
@@ -338,8 +393,11 @@ export function AddInvoiceDialog({ open, onOpenChange, onSuccess }: AddInvoiceDi
                     <div className="flex-1">
                       <p className="font-medium">{item.product_name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {item.quantity} {item.unit} • R$ {(item.unit_price || 0).toFixed(2)}/un
-                        {item.batch && ` • Lote: ${item.batch}`}
+                        Código: {item.product_code} • {item.quantity} {item.unit} • R$ {(item.unit_price || 0).toFixed(2)}/un
+                        <br />
+                        Lote: {item.batch} • Fabricação: {item.manufacturing_date ? format(item.manufacturing_date, "dd/MM/yyyy") : "N/A"}
+                        <br />
+                        Validade: {item.expiry_date ? format(item.expiry_date, "dd/MM/yyyy") : "N/A"}
                       </p>
                     </div>
                     <Button

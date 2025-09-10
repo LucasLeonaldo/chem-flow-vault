@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
+import { usePermissions, PermissionAction } from "@/hooks/usePermissions";
 import { AppSidebar } from "@/components/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
@@ -21,11 +22,12 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Protected Route Component
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+// Protected Route Component with Permissions
+function ProtectedRoute({ children, permission }: { children: React.ReactNode; permission?: PermissionAction }) {
   const { user, loading } = useAuth();
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
   
-  if (loading) {
+  if (loading || permissionsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -35,6 +37,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  if (permission && !hasPermission(permission)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-foreground mb-2">Acesso Negado</h2>
+          <p className="text-muted-foreground">Você não tem permissão para acessar esta página.</p>
+        </div>
+      </div>
+    );
   }
   
   return (
@@ -78,7 +91,7 @@ const App = () => (
             <Route 
               path="/produtos" 
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="view_products">
                   <Products />
                 </ProtectedRoute>
               } 
@@ -86,7 +99,7 @@ const App = () => (
             <Route 
               path="/notas-fiscais" 
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="view_invoices">
                   <NotasFiscais />
                 </ProtectedRoute>
               } 
@@ -94,7 +107,7 @@ const App = () => (
             <Route 
               path="/alertas" 
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="view_reports">
                   <Alertas />
                 </ProtectedRoute>
               } 
@@ -102,7 +115,7 @@ const App = () => (
             <Route 
               path="/laboratorio" 
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="view_locations">
                   <Laboratorio />
                 </ProtectedRoute>
               } 
@@ -110,7 +123,7 @@ const App = () => (
             <Route 
               path="/almoxarifado" 
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="view_locations">
                   <Almoxarifado />
                 </ProtectedRoute>
               } 
@@ -126,7 +139,7 @@ const App = () => (
             <Route 
               path="/usuarios" 
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permission="manage_users">
                   <UserManagement />
                 </ProtectedRoute>
               } 
