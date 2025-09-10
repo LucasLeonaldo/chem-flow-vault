@@ -19,6 +19,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [products, setProducts] = useState<any[]>([]);
+  const [recentMovements, setRecentMovements] = useState<any[]>([]);
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -47,6 +48,21 @@ export default function Dashboard() {
 
       if (productsError) throw productsError;
 
+      // Fetch recent movements
+      const { data: movementsData, error: movementsError } = await supabase
+        .from('product_movements')
+        .select(`
+          *,
+          product:products(name),
+          from_location:locations!product_movements_from_location_id_fkey(name),
+          to_location:locations!product_movements_to_location_id_fkey(name),
+          profiles(full_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (movementsError) throw movementsError;
+
       // Calculate stats
       const now = new Date();
       const thirtyDaysFromNow = new Date();
@@ -62,6 +78,7 @@ export default function Dashboard() {
       ).length || 0;
 
       setProducts(productsData || []);
+      setRecentMovements(movementsData || []);
       setStats({ total, pending, expiringSoon, inWarehouse });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -77,20 +94,44 @@ export default function Dashboard() {
 
   const handleApproveProduct = async (id: string) => {
     try {
+      // Get almoxarifado location
+      const { data: almoxarifado, error: locationError } = await supabase
+        .from('locations')
+        .select('id')
+        .eq('type', 'warehouse')
+        .single();
+
+      if (locationError) throw locationError;
+
+      // Update product status and move to almoxarifado
       const { error } = await supabase
         .from('products')
         .update({ 
           status: 'approved',
           approved_at: new Date().toISOString(),
-          approved_by: user?.id
+          approved_by: user?.id,
+          location_id: almoxarifado.id
         })
         .eq('id', id);
 
       if (error) throw error;
 
+      // Create movement record
+      await supabase
+        .from('product_movements')
+        .insert({
+          product_id: id,
+          movement_type: 'transfer',
+          quantity: 0, // We'll get this from product data
+          from_location_id: null, // From analysis dept
+          to_location_id: almoxarifado.id,
+          notes: 'Produto aprovado e transferido automaticamente para almoxarifado',
+          created_by: user?.id
+        });
+
       toast({
         title: "Sucesso",
-        description: "Produto aprovado com sucesso"
+        description: "Produto aprovado e transferido para almoxarifado"
       });
 
       fetchDashboardData(); // Refresh data
@@ -249,24 +290,50 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {[
-              { type: "Entrada", product: "Ácido Clorídrico", quantity: "10L", time: "2 horas atrás", user: "João Silva" },
-              { type: "Aprovação", product: "Etanol 99%", quantity: "20L", time: "4 horas atrás", user: "Maria Santos" },
-              { type: "Transferência", product: "Acetona", quantity: "5L", time: "6 horas atrás", user: "Pedro Costa" },
-            ].map((movement, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-accent/50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-primary rounded-full"></div>
-                  <div>
-                    <p className="font-medium text-sm">{movement.type}: {movement.product}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {movement.quantity} • {movement.user}
-                    </p>
+            {recentMovements.length > 0 ? (
+              recentMovements.map((movement) => {
+                const getMovementType = (type: string) => {
+                  switch (type) {
+                    case 'entry': return 'Entrada';
+                    case 'exit': return 'Saída';
+                    case 'transfer': return 'Transferência';
+                    default: return type;
+                  }
+                };
+
+                const timeAgo = (date: string) => {
+                  const now = new Date();
+                  const movementDate = new Date(date);
+                  const diffInHours = Math.floor((now.getTime() - movementDate.getTime()) / (1000 * 60 * 60));
+                  
+                  if (diffInHours < 1) return 'Há poucos minutos';
+                  if (diffInHours < 24) return `${diffInHours}h atrás`;
+                  const diffInDays = Math.floor(diffInHours / 24);
+                  return `${diffInDays}d atrás`;
+                };
+
+                return (
+                  <div key={movement.id} className="flex items-center justify-between p-3 bg-accent/50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-primary rounded-full"></div>
+                      <div>
+                        <p className="font-medium text-sm">
+                          {getMovementType(movement.movement_type)}: {movement.product?.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {movement.quantity} • {movement.profiles?.full_name || 'Sistema'}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{timeAgo(movement.created_at)}</p>
                   </div>
-                </div>
-                <p className="text-xs text-muted-foreground">{movement.time}</p>
+                );
+              })
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground">Nenhuma movimentação recente</p>
               </div>
-            ))}
+            )}
           </div>
         </CardContent>
       </Card>
