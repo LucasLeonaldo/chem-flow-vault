@@ -2,9 +2,6 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Plus } from "lucide-react";
@@ -14,6 +11,11 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Supplier {
   id: string;
@@ -30,6 +32,24 @@ interface AddProductDialogProps {
   onProductAdded?: () => void;
 }
 
+const productSchema = z.object({
+  id: z.string().min(1, "ID é obrigatório").max(50, "ID deve ter no máximo 50 caracteres").regex(/^[A-Z0-9-]+$/, "ID deve conter apenas letras maiúsculas, números e hífens"),
+  name: z.string().min(1, "Nome é obrigatório").max(200, "Nome deve ter no máximo 200 caracteres"),
+  supplier_id: z.string().min(1, "Fornecedor é obrigatório"),
+  quantity: z.number().positive("Quantidade deve ser maior que zero"),
+  unit: z.string().min(1, "Unidade é obrigatória").max(20, "Unidade deve ter no máximo 20 caracteres"),
+  batch: z.string().min(1, "Lote é obrigatório").max(50, "Lote deve ter no máximo 50 caracteres"),
+  invoice: z.string().min(1, "Nota fiscal é obrigatória").max(50, "Nota fiscal deve ter no máximo 50 caracteres"),
+  manufacturing_date: z.date({ required_error: "Data de fabricação é obrigatória" }),
+  expiry_date: z.date({ required_error: "Data de validade é obrigatória" }),
+  location_id: z.string().min(1, "Localização é obrigatória"),
+}).refine((data) => data.manufacturing_date < data.expiry_date, {
+  message: "Data de validade deve ser posterior à data de fabricação",
+  path: ["expiry_date"],
+});
+
+type ProductFormData = z.infer<typeof productSchema>;
+
 export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -39,19 +59,21 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
-  const [formData, setFormData] = useState({
-    id: "",
-    name: "",
-    supplier_id: "",
-    quantity: "",
-    unit: "",
-    batch: "",
-    invoice: "",
-    manufacturing_date: undefined as Date | undefined,
-    expiry_date: undefined as Date | undefined,
-    location_id: "",
+  const form = useForm<ProductFormData>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      id: "",
+      name: "",
+      supplier_id: "",
+      quantity: 0,
+      unit: "",
+      batch: "",
+      invoice: "",
+      manufacturing_date: undefined,
+      expiry_date: undefined,
+      location_id: "",
+    },
   });
 
   useEffect(() => {
@@ -93,7 +115,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
 
   const fetchInvoices = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error} = await supabase
         .from("invoices")
         .select(`
           id,
@@ -130,7 +152,7 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
       fetchInvoiceItems(invoiceId);
       const invoice = invoices.find(inv => inv.id === invoiceId);
       if (invoice) {
-        setFormData(prev => ({ ...prev, invoice: invoice.invoice_number }));
+        form.setValue("invoice", invoice.invoice_number);
       }
     } else {
       setInvoiceItems([]);
@@ -144,63 +166,39 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
       const randomStr = Math.random().toString(36).substring(2, 5);
       const autoId = `PROD-${timestamp}-${randomStr}`.toUpperCase();
 
-      setFormData(prev => ({
-        ...prev,
-        id: autoId,
-        name: item.product_name,
-        quantity: item.quantity.toString(),
-        unit: item.unit,
-        batch: item.batch || "",
-        manufacturing_date: item.manufacturing_date ? new Date(item.manufacturing_date) : undefined,
-        expiry_date: item.expiry_date ? new Date(item.expiry_date) : undefined,
-      }));
+      form.setValue("id", autoId);
+      form.setValue("name", item.product_name);
+      form.setValue("quantity", parseFloat(item.quantity) || 0);
+      form.setValue("unit", item.unit);
+      form.setValue("batch", item.batch || "");
+      if (item.manufacturing_date) form.setValue("manufacturing_date", new Date(item.manufacturing_date));
+      if (item.expiry_date) form.setValue("expiry_date", new Date(item.expiry_date));
     }
   };
 
   const resetForm = () => {
     setSelectedInvoice("");
     setInvoiceItems([]);
-    setFormData({
-      id: "",
-      name: "",
-      supplier_id: "",
-      quantity: "",
-      unit: "",
-      batch: "",
-      invoice: "",
-      manufacturing_date: undefined,
-      expiry_date: undefined,
-      location_id: "",
-    });
+    form.reset();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (data: ProductFormData) => {
     if (!user) return;
 
-    setIsLoading(true);
-
     try {
-      // Auto-generate ID if not provided
-      const productId = formData.id || (() => {
-        const timestamp = Date.now().toString(36);
-        const randomStr = Math.random().toString(36).substring(2, 5);
-        return `PROD-${timestamp}-${randomStr}`.toUpperCase();
-      })();
-
       const { error } = await supabase
         .from("products")
         .insert({
-          id: productId,
-          name: formData.name,
-          supplier_id: formData.supplier_id,
-          quantity: parseFloat(formData.quantity),
-          unit: formData.unit,
-          batch: formData.batch,
-          invoice: formData.invoice,
-          manufacturing_date: formData.manufacturing_date?.toISOString().split('T')[0],
-          expiry_date: formData.expiry_date?.toISOString().split('T')[0],
-          location_id: formData.location_id,
+          id: data.id,
+          name: data.name,
+          supplier_id: data.supplier_id,
+          quantity: data.quantity,
+          unit: data.unit,
+          batch: data.batch,
+          invoice: data.invoice,
+          manufacturing_date: format(data.manufacturing_date, "yyyy-MM-dd"),
+          expiry_date: format(data.expiry_date, "yyyy-MM-dd"),
+          location_id: data.location_id,
           status: "pending",
           created_by: user.id,
         });
@@ -222,8 +220,6 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
         description: "Não foi possível cadastrar o produto. Tente novamente.",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -243,248 +239,306 @@ export function AddProductDialog({ onProductAdded }: AddProductDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Auto-fill from Invoice */}
-          <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
-            <h4 className="font-medium text-sm">Preencher automaticamente com dados da Nota Fiscal</h4>
-            
-            <div className="space-y-2">
-              <Label htmlFor="invoice_select">Selecionar Nota Fiscal (Opcional)</Label>
-              <Select
-                value={selectedInvoice}
-                onValueChange={handleInvoiceSelect}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma nota fiscal" />
-                </SelectTrigger>
-                <SelectContent>
-                  {invoices.map((invoice) => (
-                    <SelectItem key={invoice.id} value={invoice.id}>
-                      {invoice.invoice_number} - {invoice.suppliers.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {selectedInvoice && invoiceItems.length > 0 && (
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+            {/* Auto-fill from Invoice */}
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
+              <h4 className="font-medium text-sm">Preencher automaticamente com dados da Nota Fiscal</h4>
+              
               <div className="space-y-2">
-                <Label htmlFor="product_select">Selecionar Produto da NF</Label>
-                <Select onValueChange={handleProductSelect}>
+                <Select value={selectedInvoice} onValueChange={handleInvoiceSelect}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione um produto" />
+                    <SelectValue placeholder="Selecione uma nota fiscal" />
                   </SelectTrigger>
                   <SelectContent>
-                    {invoiceItems.map((item) => (
-                      <SelectItem key={item.id} value={item.product_name}>
-                        {item.product_name} - {item.quantity} {item.unit}
-                        {item.batch && ` (Lote: ${item.batch})`}
+                    {invoices.map((invoice) => (
+                      <SelectItem key={invoice.id} value={invoice.id}>
+                        NF {invoice.invoice_number} - {(invoice.suppliers as any)?.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="id">Código do Produto</Label>
-              <Input
-                id="id"
-                value={formData.id}
-                onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                placeholder="Será gerado automaticamente se vazio"
+              {selectedInvoice && invoiceItems.length > 0 && (
+                <div className="space-y-2">
+                  <Select onValueChange={handleProductSelect}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um produto da nota" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {invoiceItems.map((item, index) => (
+                        <SelectItem key={index} value={item.product_name}>
+                          {item.product_name} - {item.quantity} {item.unit}
+                          {item.batch && ` (Lote: ${item.batch})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Código do Produto *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: PROD-ABC123" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome do Produto *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: Ácido Sulfúrico" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="name">Nome do Produto *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ex: Ácido Sulfúrico"
-                required
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="supplier_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fornecedor *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o fornecedor" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {suppliers.map((supplier) => (
+                          <SelectItem key={supplier.id} value={supplier.id}>
+                            {supplier.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="location_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Localização *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a localização" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {locations.map((location) => (
+                          <SelectItem key={location.id} value={location.id}>
+                            {location.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="supplier">Fornecedor *</Label>
-              <Select
-                value={formData.supplier_id}
-                onValueChange={(value) => setFormData({ ...formData, supplier_id: value })}
-                required
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="quantity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Quantidade *</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number" 
+                        step="0.01" 
+                        placeholder="Ex: 100"
+                        {...field}
+                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="unit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unidade *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a unidade" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="ml">ml</SelectItem>
+                        <SelectItem value="l">L</SelectItem>
+                        <SelectItem value="g">g</SelectItem>
+                        <SelectItem value="kg">kg</SelectItem>
+                        <SelectItem value="un">unidade</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="batch"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Lote *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: L123456" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="invoice"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nota Fiscal *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: NF-001234" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="manufacturing_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Data de Fabricação *</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full pl-3 text-left font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value ? (
+                              format(field.value, "PPP", { locale: ptBR })
+                            ) : (
+                              <span>Selecione a data</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          disabled={(date) =>
+                            date > new Date() || date < new Date("1900-01-01")
+                          }
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="expiry_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Data de Validade *</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full pl-3 text-left font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value ? (
+                              format(field.value, "PPP", { locale: ptBR })
+                            ) : (
+                              <span>Selecione a data</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          disabled={(date) => date < new Date("1900-01-01")}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="flex gap-4 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  resetForm();
+                  setOpen(false);
+                }}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o fornecedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((supplier) => (
-                    <SelectItem key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? "Cadastrando..." : "Cadastrar Produto"}
+              </Button>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="location">Localização *</Label>
-              <Select
-                value={formData.location_id}
-                onValueChange={(value) => setFormData({ ...formData, location_id: value })}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a localização" />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map((location) => (
-                    <SelectItem key={location.id} value={location.id}>
-                      {location.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Quantidade *</Label>
-              <Input
-                id="quantity"
-                type="number"
-                step="0.01"
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                placeholder="Ex: 100"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="unit">Unidade *</Label>
-              <Select
-                value={formData.unit}
-                onValueChange={(value) => setFormData({ ...formData, unit: value })}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a unidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ml">ml</SelectItem>
-                  <SelectItem value="l">L</SelectItem>
-                  <SelectItem value="g">g</SelectItem>
-                  <SelectItem value="kg">kg</SelectItem>
-                  <SelectItem value="un">un</SelectItem>
-                  <SelectItem value="cx">cx</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="batch">Lote *</Label>
-              <Input
-                id="batch"
-                value={formData.batch}
-                onChange={(e) => setFormData({ ...formData, batch: e.target.value })}
-                placeholder="Ex: LT001-2024"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="invoice">Nota Fiscal *</Label>
-              <Input
-                id="invoice"
-                value={formData.invoice}
-                onChange={(e) => setFormData({ ...formData, invoice: e.target.value })}
-                placeholder="Ex: NF123456"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Data de Fabricação *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full pl-3 text-left font-normal",
-                      !formData.manufacturing_date && "text-muted-foreground"
-                    )}
-                  >
-                    {formData.manufacturing_date ? (
-                      format(formData.manufacturing_date, "dd/MM/yyyy", { locale: ptBR })
-                    ) : (
-                      <span>Selecione a data</span>
-                    )}
-                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={formData.manufacturing_date}
-                    onSelect={(date) => setFormData({ ...formData, manufacturing_date: date })}
-                    disabled={(date) => date > new Date()}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Data de Validade *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full pl-3 text-left font-normal",
-                      !formData.expiry_date && "text-muted-foreground"
-                    )}
-                  >
-                    {formData.expiry_date ? (
-                      format(formData.expiry_date, "dd/MM/yyyy", { locale: ptBR })
-                    ) : (
-                      <span>Selecione a data</span>
-                    )}
-                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={formData.expiry_date}
-                    onSelect={(date) => setFormData({ ...formData, expiry_date: date })}
-                    disabled={(date) => date < new Date()}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-4">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isLoading} className="flex-1">
-              {isLoading ? "Cadastrando..." : "Cadastrar Produto"}
-            </Button>
-          </div>
-        </form>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
