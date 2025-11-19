@@ -13,6 +13,7 @@ import Alertas from "./pages/Alertas";
 import Laboratorio from "./pages/Laboratorio";
 import Almoxarifado from "./pages/Almoxarifado";
 import Movimentacoes from "./pages/Movimentacoes";
+import Relatorios from "./pages/Relatorios";
 import Auth from "./pages/Auth";
 import Index from "./pages/Index";
 import Profile from "./pages/Profile";
@@ -133,6 +134,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Movimentacoes />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/relatorios" 
+              element={
+                <ProtectedRoute permission="view_reports">
+                  <Relatorios />
                 </ProtectedRoute>
               } 
             />
