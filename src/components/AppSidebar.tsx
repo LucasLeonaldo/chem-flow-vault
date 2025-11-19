@@ -10,7 +10,8 @@ import {
   Settings,
   ChevronRight,
   LogOut,
-  FileText
+  FileText,
+  BarChart3
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,6 +36,7 @@ const mainItems = [
   { title: "Produtos", url: "/produtos", icon: Package, permission: "view_products" },
   { title: "Notas Fiscais", url: "/notas-fiscais", icon: FileText, permission: "view_invoices" },
   { title: "Movimentações", url: "/movimentacoes", icon: ArrowRightLeft, permission: null },
+  { title: "Relatórios", url: "/relatorios", icon: BarChart3, permission: "view_reports" },
   { title: "Laboratório", url: "/laboratorio", icon: FlaskConical, permission: "view_locations" },
   { title: "Almoxarifado", url: "/almoxarifado", icon: Warehouse, permission: "view_locations" },
   { title: "Alertas", url: "/alertas", icon: AlertTriangle, permission: "view_reports" },
