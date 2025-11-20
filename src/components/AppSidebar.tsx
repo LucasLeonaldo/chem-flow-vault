@@ -11,7 +11,8 @@ import {
   ChevronRight,
   LogOut,
   FileText,
-  BarChart3
+  BarChart3,
+  Bell
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,6 +44,7 @@ const mainItems = [
 ];
 
 const adminItems = [
+  { title: "Notificações", url: "/notificacoes", icon: Bell, permission: null },
   { title: "Usuários", url: "/usuarios", icon: Users, permission: "manage_users" },
   { title: "Perfil", url: "/perfil", icon: Users, permission: null },
   { title: "Configurações", url: "/configuracoes", icon: Settings, permission: null },

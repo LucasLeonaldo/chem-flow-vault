@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { usePermissions, PermissionAction } from "@/hooks/usePermissions";
 import { AppSidebar } from "@/components/AppSidebar";
+import { NotificationBell } from "@/components/NotificationBell";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Alertas from "./pages/Alertas";
@@ -14,6 +15,7 @@ import Laboratorio from "./pages/Laboratorio";
 import Almoxarifado from "./pages/Almoxarifado";
 import Movimentacoes from "./pages/Movimentacoes";
 import Relatorios from "./pages/Relatorios";
+import Notificacoes from "./pages/Notificacoes";
 import Auth from "./pages/Auth";
 import Index from "./pages/Index";
 import Profile from "./pages/Profile";
@@ -56,12 +58,15 @@ function ProtectedRoute({ children, permission }: { children: React.ReactNode; p
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col">
-          <header className="h-16 border-b border-border bg-card flex items-center px-6">
-            <SidebarTrigger />
-            <div className="ml-4">
-              <h2 className="text-xl font-semibold text-foreground">ChemStock</h2>
-              <p className="text-sm text-muted-foreground">Sistema de Gestão de Estoque Químico</p>
+          <header className="h-16 border-b border-border bg-card flex items-center px-6 justify-between">
+            <div className="flex items-center">
+              <SidebarTrigger />
+              <div className="ml-4">
+                <h2 className="text-xl font-semibold text-foreground">ChemStock</h2>
+                <p className="text-sm text-muted-foreground">Sistema de Gestão de Estoque Químico</p>
+              </div>
             </div>
+            <NotificationBell />
           </header>
           <main className="flex-1 p-6 overflow-auto">
             {children}
@@ -142,6 +147,14 @@ const App = () => (
               element={
                 <ProtectedRoute permission="view_reports">
                   <Relatorios />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/notificacoes" 
+              element={
+                <ProtectedRoute>
+                  <Notificacoes />
                 </ProtectedRoute>
               } 
             />
