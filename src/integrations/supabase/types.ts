@@ -141,6 +141,93 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_preferences: {
+        Row: {
+          approval_alerts: boolean
+          created_at: string
+          email_enabled: boolean
+          expiry_alerts: boolean
+          expiry_days_threshold: number
+          id: string
+          low_stock_alerts: boolean
+          low_stock_threshold: number
+          movement_alerts: boolean
+          push_enabled: boolean
+          system_alerts: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          approval_alerts?: boolean
+          created_at?: string
+          email_enabled?: boolean
+          expiry_alerts?: boolean
+          expiry_days_threshold?: number
+          id?: string
+          low_stock_alerts?: boolean
+          low_stock_threshold?: number
+          movement_alerts?: boolean
+          push_enabled?: boolean
+          system_alerts?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          approval_alerts?: boolean
+          created_at?: string
+          email_enabled?: boolean
+          expiry_alerts?: boolean
+          expiry_days_threshold?: number
+          id?: string
+          low_stock_alerts?: boolean
+          low_stock_threshold?: number
+          movement_alerts?: boolean
+          push_enabled?: boolean
+          system_alerts?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          data: Json | null
+          id: string
+          message: string
+          read: boolean
+          read_at: string | null
+          severity: string
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          data?: Json | null
+          id?: string
+          message: string
+          read?: boolean
+          read_at?: string | null
+          severity?: string
+          title: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json | null
+          id?: string
+          message?: string
+          read?: boolean
+          read_at?: string | null
+          severity?: string
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       product_movements: {
         Row: {
           created_at: string | null
@@ -378,6 +465,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_notification: {
+        Args: {
+          _data?: Json
+          _message: string
+          _severity?: string
+          _title: string
+          _type: string
+          _user_id: string
+        }
+        Returns: string
+      }
       has_permission: {
         Args: {
           _permission: Database["public"]["Enums"]["permission_action"]
