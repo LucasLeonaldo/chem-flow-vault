@@ -56,7 +56,7 @@ export default function Dashboard() {
           product:products(name),
           from_location:locations!product_movements_from_location_id_fkey(name),
           to_location:locations!product_movements_to_location_id_fkey(name),
-          profiles(full_name)
+          creator:profiles!product_movements_created_by_fkey(full_name)
         `)
         .order('created_at', { ascending: false })
         .limit(5);
@@ -321,7 +321,7 @@ export default function Dashboard() {
                           {getMovementType(movement.movement_type)}: {movement.product?.name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {movement.quantity} • {movement.profiles?.full_name || 'Sistema'}
+                          {movement.quantity} • {movement.creator?.full_name || 'Sistema'}
                         </p>
                       </div>
                     </div>
