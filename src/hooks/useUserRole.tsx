@@ -21,14 +21,31 @@ export const useUserRole = () => {
         const { data, error } = await supabase
           .from("user_roles")
           .select("role")
-          .eq("user_id", user.id)
-          .single();
+          .eq("user_id", user.id);
 
         if (error) {
           console.error("Error fetching user role:", error);
           setRole("viewer"); // Default role
+        } else if (!data || data.length === 0) {
+          // No role assigned yet, use default
+          setRole("viewer");
         } else {
-          setRole(data.role as UserRole);
+          // User has one or more roles, get the highest privilege one
+          const roleHierarchy: Record<UserRole, number> = {
+            viewer: 1,
+            operator: 2,
+            analyst: 3,
+            admin: 4,
+          };
+          
+          const highestRole = data.reduce((highest, current) => {
+            const currentRole = current.role as UserRole;
+            return roleHierarchy[currentRole] > roleHierarchy[highest] 
+              ? currentRole 
+              : highest;
+          }, "viewer" as UserRole);
+          
+          setRole(highestRole);
         }
       } catch (error) {
         console.error("Error fetching user role:", error);
