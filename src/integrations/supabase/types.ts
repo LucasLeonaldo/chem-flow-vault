@@ -465,6 +465,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bootstrap_admin: { Args: { _user_id: string }; Returns: undefined }
       create_notification: {
         Args: {
           _data?: Json
